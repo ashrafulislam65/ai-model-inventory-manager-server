@@ -26,6 +26,12 @@ async function run() {
     await client.connect();
     const db = client.db("AIMDB");
     const modelsCollection = db.collection("models");
+    app.get('/models',async(req,res)=>{
+        const cursor = modelsCollection.find();
+        const result = await cursor.toArray();
+        res.send(result);
+    })
+    //insert operation
     app.post('/add-model',async(req,res)=>{
         const newModel = req.body;
         const result = await modelsCollection.insertOne(newModel);
