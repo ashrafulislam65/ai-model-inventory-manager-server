@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = "mongodb+srv://AIMDB:ULYqXbKUWy1kCGLO@cluster0.fcejyck.mongodb.net/?appName=Cluster0";
 const app = express();
 const port = process.env.PORT || 3000;
@@ -26,6 +26,14 @@ async function run() {
     await client.connect();
     const db = client.db("AIMDB");
     const modelsCollection = db.collection("models");
+    //get specific model
+    app.get('/models/:id',async(req,res)=>{
+        const id = req.params.id;
+        const query = {_id: new ObjectId(id)}
+        const result = await modelsCollection.findOne(query);
+        res.send(result);
+    })
+    //get all models 
     app.get('/models',async(req,res)=>{
         const cursor = modelsCollection.find();
         const result = await cursor.toArray();
