@@ -33,6 +33,19 @@ async function run() {
         const result = await modelsCollection.findOne(query);
         res.send(result);
     })
+    //update model
+    app.patch('/update-model/:id',async(req,res)=>{
+        const id = req.params.id;
+        const updateModel = req.body;
+        const query = {_id: new ObjectId(id)}
+        const update = {
+            $set: updateModel
+        }
+        const result = await modelsCollection.updateOne(query,update);
+        res.send(result);
+
+
+    })
     //get all models 
     app.get('/models',async(req,res)=>{
         const cursor = modelsCollection.find();
