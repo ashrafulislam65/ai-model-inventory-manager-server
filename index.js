@@ -27,7 +27,13 @@ async function run() {
         const db = client.db("AIMDB");
         const modelsCollection = db.collection("models");
         const purchasedCollection = db.collection("purchased");
-        //purchased models
+        ///create purchase api
+        app.post('/purchased', async (req, res) => {
+            const purchase = req.body;
+            const result = await purchasedCollection.insertOne(purchase);
+            res.send(result);
+        });
+        //get purchased models
         app.get('/purchased', async (req, res) => {
             const purchasedBy = req.query.purchasedBy;
             const query = {};
