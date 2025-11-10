@@ -26,6 +26,18 @@ async function run() {
         await client.connect();
         const db = client.db("AIMDB");
         const modelsCollection = db.collection("models");
+        const purchasedCollection = db.collection("purchased");
+        //purchased models
+        app.get('/purchased', async (req, res) => {
+            const purchasedBy = req.query.purchasedBy;
+            const query = {};
+            if (purchasedBy) {
+                query.purchasedBy = purchasedBy;
+            }
+            const cursor = purchasedCollection.find(query).sort({ purchasedAt: -1 });
+            const result = await cursor.toArray();
+            res.send(result);
+        });
         //get specific model
         app.get('/models/:id', async (req, res) => {
             const id = req.params.id;
