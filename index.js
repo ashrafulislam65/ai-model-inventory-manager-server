@@ -27,6 +27,23 @@ async function run() {
         const db = client.db("AIMDB");
         const modelsCollection = db.collection("models");
         const purchasedCollection = db.collection("purchased");
+        const usersCollection = db.collection("users");
+        //user api
+        app.post('/users', async (req, res) => {
+            const newUser = req.body;
+            const email = req.body.email;
+            const query = { email: email };
+            const existingUser = await usersCollection.findOne(query);
+            if (existingUser) {
+                return res.send({ message: 'User already exists' });
+            }
+            else {
+
+                const result = await usersCollection.insertOne(newUser);
+                res.send(result);
+            }
+
+        });
         ///create purchase api
         app.post('/purchased', async (req, res) => {
             const purchase = req.body;
@@ -44,6 +61,33 @@ async function run() {
             const result = await cursor.toArray();
             res.send(result);
         });
+        //get models by purchase 
+        app.get('/models/purchased/:modelId', async (req, res) => {
+            const modelId = req.params.modelId;
+            const query = {
+                modelId: modelId
+            }
+            const cursor = purchasedCollection.find(query);
+            const result = await cursor.toArray();
+            res.send(result);
+        });
+        // Increment the purchase count of a model
+        app.patch('/models/purchase/:id', async (req, res) => {
+            const id = req.params.id;
+            const filter = { _id: new ObjectId(id) };
+            const updateDoc = {
+                $inc: { purchased: 1 }
+            };
+
+            const result = await modelsCollection.updateOne(filter, updateDoc);
+            if (result.modifiedCount > 0) {
+                res.send({ success: true });
+            } else {
+                res.send({ success: false });
+            }
+        });
+
+
         //get specific model
         app.get('/models/:id', async (req, res) => {
             const id = req.params.id;
@@ -53,17 +97,55 @@ async function run() {
         })
         //update model
         app.patch('/update-model/:id', async (req, res) => {
-            const id = req.params.id;
-            const updateModel = req.body;
-            const query = { _id: new ObjectId(id) }
-            const update = {
-                $set: updateModel
+            try {
+                const id = req.params.id;
+                const updateModel = req.body;
+
+                // Check if ObjectId is valid
+                if (!ObjectId.isValid(id)) {
+                    return res.status(400).send({
+                        success: false,
+                        message: "Invalid model ID format"
+                    });
+                }
+
+                const query = { _id: new ObjectId(id) };
+                const update = {
+                    $set: updateModel
+                };
+
+                const result = await modelsCollection.updateOne(query, update);
+
+                // Check if document was found and updated
+                if (result.matchedCount === 0) {
+                    return res.status(404).send({
+                        success: false,
+                        message: "Model not found"
+                    });
+                }
+
+                if (result.modifiedCount > 0) {
+                    res.send({
+                        success: true,
+                        message: "Model updated successfully",
+                        modifiedCount: result.modifiedCount
+                    });
+                } else {
+                    res.send({
+                        success: true,
+                        message: "No changes detected",
+                        modifiedCount: result.modifiedCount
+                    });
+                }
+
+            } catch (error) {
+                console.error("Error updating model:", error);
+                res.status(500).send({
+                    success: false,
+                    message: "Internal server error"
+                });
             }
-            const result = await modelsCollection.updateOne(query, update);
-            res.send(result);
-
-
-        })
+        });
         //delete
         app.delete('/models/:id', async (req, res) => {
             const id = req.params.id;
@@ -72,29 +154,172 @@ async function run() {
             res.send(result);
         })
         //get creator specific models
-        app.get('/models', async (req, res) => {
-            console.log(req.query);
-            const createdBy = req.query.
-                createdBy;
-            const query = {};
-            if (createdBy) {
-                query.createdBy =
+        //get creator specific models
+        app.get('/my-models', async (req, res) => {
+            try {
+                const creatorEmail = req.query.creatorEmail;
 
-                    createdBy;
+                if (!creatorEmail) {
+                    return res.status(400).send({
+                        success: false,
+                        message: "Creator email is required"
+                    });
+                }
+
+                console.log(`🔍 Fetching models for creator: ${creatorEmail}`);
+
+                const query = { createdBy: creatorEmail };
+                const cursor = modelsCollection.find(query).sort({ createdAt: -1 });
+                const result = await cursor.toArray();
+
+                console.log(`✅ Found ${result.length} models for ${creatorEmail}`);
+                res.send(result);
+
+            } catch (error) {
+                console.error('❌ Error in /my-models endpoint:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Internal server error',
+                    error: error.message
+                });
             }
-            const projectFields = { image: 1, name: 1, framework: 1, description: 1,useCase:1,createdBy:1 }
-            const cursor = modelsCollection.find(query).sort({ createdAt: -1 }).project(projectFields);
+        });
+        // আপনার server.js এ এই endpoint গুলো যোগ করুন
+
+        // Search models by name (case-insensitive)
+        app.get('/models/search', async (req, res) => {
+            try {
+                const searchTerm = req.query.q;
+
+                if (!searchTerm) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Search term is required'
+                    });
+                }
+
+                const query = {
+                    name: {
+                        $regex: searchTerm,
+                        $options: 'i'
+                    }
+                };
+
+                const cursor = modelsCollection.find(query).sort({ createdAt: -1 });
+                const result = await cursor.toArray();
+
+                res.send(result);
+
+            } catch (error) {
+                console.error('Error in search endpoint:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Internal server error',
+                    error: error.message
+                });
+            }
+        });
+
+        // Filter models by framework
+        app.get('/models/filter', async (req, res) => {
+            try {
+                const framework = req.query.framework;
+
+                const query = {};
+                if (framework && framework !== 'all') {
+                    query.framework = framework;
+                }
+
+                const cursor = modelsCollection.find(query).sort({ createdAt: -1 });
+                const result = await cursor.toArray();
+
+                res.send(result);
+
+            } catch (error) {
+                console.error('Error in filter endpoint:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Internal server error',
+                    error: error.message
+                });
+            }
+        });
+
+        // Combined search and filter
+        app.get('/models/combined', async (req, res) => {
+            try {
+                const { search, framework } = req.query;
+
+                const query = {};
+
+                // Add search filter
+                if (search && search.trim() !== '') {
+                    query.name = {
+                        $regex: search,
+                        $options: 'i'
+                    };
+                }
+
+                // Add framework filter
+                if (framework && framework !== 'all') {
+                    query.framework = framework;
+                }
+
+                const cursor = modelsCollection.find(query).sort({ createdAt: -1 });
+                const result = await cursor.toArray();
+
+                res.send(result);
+
+            } catch (error) {
+                console.error('Error in combined endpoint:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Internal server error',
+                    error: error.message
+                });
+            }
+        });
+
+        //get featured models
+        app.get('/featured-models', async (req, res) => {
+
+
+            const cursor = modelsCollection.find().sort({ createdAt: -1 }).limit(6);
             const result = await cursor.toArray();
             res.send(result);
         })
         //get all models 
         app.get('/models', async (req, res) => {
-           
-            const projectFields = { image: 1, name: 1, framework: 1, description:0,useCase:1,createdBy:0 }
-            const cursor = modelsCollection.find().sort({ createdAt: -1 }).limit(6).project(projectFields);
-            const result = await cursor.toArray();
-            res.send(result);
-        })
+            try {
+                console.log('🔍 Fetching all models...');
+
+                // Include all fields that frontend needs
+                const projectFields = {
+                    image: 1,
+                    name: 1,
+                    framework: 1,
+                    description: 1,  // ✅ Include this
+                    useCase: 1,
+                    createdBy: 1,    // ✅ Include this
+                    createdAt: 1,
+                    purchased: 1
+                };
+
+                const cursor = modelsCollection.find().sort({ createdAt: -1 }).project(projectFields);
+                const result = await cursor.toArray();
+
+                console.log(`✅ Found ${result.length} models`);
+                res.send(result);
+
+            } catch (error) {
+                console.error('❌ Error in /models endpoint:', error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Internal server error',
+                    error: error.message
+                });
+            }
+        });
         //insert operation
         app.post('/add-model', async (req, res) => {
             const newModel = req.body;
